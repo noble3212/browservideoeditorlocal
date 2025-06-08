@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mini Video Editor</title>
+  <style>
+    body, html {
+      margin: 0;
+      height: 100%;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .editor-container {
+      display: flex;
+      height: 100vh;
+      background: #1e1e1e;
+      color: white;
+    }
+    .sidebar {
+      width: 220px;
+      background: #252526;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+    .dropzone {
+      height: 160px;
+      border: 2px dashed #555;
+      margin-top: 10px;
+      padding: 10px;
+      overflow-y: auto;
+    }
+    .clip {
+      background: #007acc;
+      padding: 5px;
+      margin: 5px 0;
+      cursor: grab;
+      user-select: none;
+    }
+    .main-editor {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .preview-panel {
+      flex: 0 0 300px;
+      background: #1e1e1e;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+    .timeline {
+      flex: 1;
+      background: #333;
+      padding: 10px;
+    }
+    .track {
+      height: 60px;
+      border: 1px solid #555;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      overflow-x: auto;
+    }
+    .timeline-clip {
+      background: #0e639c;
+      padding: 5px 10px;
+      margin-right: 4px;
+      cursor: move;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+<div class="editor-container">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <h3>📁 Media Bin</h3>
+    <div id="mediaBin" class="dropzone">Drop videos here</div>
+  </aside>
+
+  <!-- Main Area -->
+  <main class="main-editor">
+    
+    <div class="preview-panel">
+      <h3>🎬 Preview</h3>
+      <video id="preview" width="100%" height="auto" controls></video>
+    </div>
+
+    <div class="timeline">
+      <h3>🕒 Timeline</h3>
+      <div id="videoTrack" class="track">Video Track</div>
+      <div id="audioTrack" class="track">Audio Track</div>
+    </div>
+  </main>
+</div>
+
+<script>
+  const mediaBin = document.getElementById('mediaBin');
+  const videoTrack = document.getElementById('videoTrack');
+  const preview = document.getElementById('preview');
+  const mediaFiles = {};
+
+  mediaBin.addEventListener('dragover', (e) => e.preventDefault());
+
+  mediaBin.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (!file || !file.type.startsWith('video')) return;
+
+    const clip = document.createElement('div');
+    clip.className = 'clip';
+    clip.textContent = file.name;
+    clip.draggable = true;
+    clip.dataset.filename = file.name;
+    mediaFiles[file.name] = file;
+
+    clip.addEventListener('dragstart', (ev) => {
+      ev.dataTransfer.setData('text/plain', file.name);
+    });
+
+    clip.addEventListener('click', () => {
+      const url = URL.createObjectURL(file);
+      preview.src = url;
+    });
+
+    mediaBin.appendChild(clip);
+  });
+
+  [videoTrack, audioTrack].forEach(track => {
+    track.addEventListener('dragover', (e) => e.preventDefault());
+    track.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const name = e.dataTransfer.getData('text/plain');
+      const clip = document.createElement('div');
+      clip.className = 'timeline-clip';
+      clip.textContent = name;
+      track.appendChild(clip);
+    });
+  });
+</script>
+
+</body>
+</html>
