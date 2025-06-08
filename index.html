@@ -42,14 +42,48 @@
     }
     .preview-panel {
       flex: 0 0 300px;
+      max-height: 300px;
+      overflow: hidden;
       background: #1e1e1e;
       padding: 10px;
       box-sizing: border-box;
+    }
+    .preview-panel video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: black;
     }
     .timeline {
       flex: 1;
       background: #333;
       padding: 10px;
+      box-sizing: border-box;
+      overflow-x: auto;
+      position: relative;
+    }
+    .time-ruler {
+      position: sticky;
+      top: 0;
+      background: #222;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      color: #bbb;
+      font-size: 12px;
+      user-select: none;
+      padding-left: 60px;
+      border-bottom: 1px solid #555;
+      z-index: 10;
+    }
+    .time-marker {
+      width: 15px;
+      text-align: center;
+      border-left: 1px solid #555;
+      height: 100%;
+      box-sizing: border-box;
+      padding-left: 2px;
+      font-size: 10px;
     }
     .track {
       height: 60px;
@@ -58,6 +92,21 @@
       display: flex;
       align-items: center;
       overflow-x: auto;
+      overflow-y: hidden;
+      white-space: nowrap;
+      position: relative;
+      background: #2a2a2a;
+    }
+    .track-label {
+      width: 60px;
+      flex-shrink: 0;
+      text-align: center;
+      border-right: 1px solid #555;
+      user-select: none;
+      background: #1b1b1b;
+      line-height: 60px;
+      font-weight: bold;
+      color: #aaa;
     }
     .timeline-clip {
       background: #0e639c;
@@ -65,6 +114,15 @@
       margin-right: 4px;
       cursor: move;
       white-space: nowrap;
+      flex-shrink: 0;
+      user-select: none;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #audioTrack .timeline-clip {
+      background: #0a8458;
     }
   </style>
 </head>
@@ -80,16 +138,19 @@
 
   <!-- Main Area -->
   <main class="main-editor">
-    
     <div class="preview-panel">
       <h3>🎬 Preview</h3>
-      <video id="preview" width="100%" height="auto" controls></video>
+      <video id="preview" controls playsinline></video>
     </div>
 
     <div class="timeline">
-      <h3>🕒 Timeline</h3>
-      <div id="videoTrack" class="track">Video Track</div>
-      <div id="audioTrack" class="track">Audio Track</div>
+      <div class="time-ruler" id="timeRuler"></div>
+      <div id="videoTrack" class="track">
+        <div class="track-label">Video</div>
+      </div>
+      <div id="audioTrack" class="track">
+        <div class="track-label">Audio</div>
+      </div>
     </div>
   </main>
 </div>
@@ -97,30 +158,65 @@
 <script>
   const mediaBin = document.getElementById('mediaBin');
   const videoTrack = document.getElementById('videoTrack');
+  const audioTrack = document.getElementById('audioTrack');
   const preview = document.getElementById('preview');
+  const timeRuler = document.getElementById('timeRuler');
+
   const mediaFiles = {};
+  const SCALE = 15; // pixels per second
+  let timelineClips = [];
+  let currentTimelineIndex = 0;
+
+  function createTimeRuler(seconds = 30) {
+    timeRuler.innerHTML = '';
+    for(let i = 0; i <= seconds; i++) {
+      const marker = document.createElement('div');
+      marker.className = 'time-marker';
+      marker.textContent = i + 's';
+      timeRuler.appendChild(marker);
+    }
+  }
+  createTimeRuler(30);
 
   mediaBin.addEventListener('dragover', (e) => e.preventDefault());
 
-  mediaBin.addEventListener('drop', (e) => {
+  function getVideoDuration(file) {
+    return new Promise((resolve) => {
+      const tempVideo = document.createElement('video');
+      tempVideo.preload = 'metadata';
+      tempVideo.onloadedmetadata = () => {
+        URL.revokeObjectURL(tempVideo.src);
+        resolve(tempVideo.duration);
+      };
+      tempVideo.src = URL.createObjectURL(file);
+    });
+  }
+
+  mediaBin.addEventListener('drop', async (e) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (!file || !file.type.startsWith('video')) return;
 
+    const duration = await getVideoDuration(file);
+
     const clip = document.createElement('div');
     clip.className = 'clip';
-    clip.textContent = file.name;
+    clip.textContent = file.name + ` (${duration.toFixed(1)}s)`;
     clip.draggable = true;
     clip.dataset.filename = file.name;
-    mediaFiles[file.name] = file;
+    clip.dataset.duration = duration;
+    mediaFiles[file.name] = { file, duration };
 
     clip.addEventListener('dragstart', (ev) => {
       ev.dataTransfer.setData('text/plain', file.name);
+      ev.dataTransfer.setDragImage(clip, ev.offsetX, ev.offsetY);
     });
 
     clip.addEventListener('click', () => {
       const url = URL.createObjectURL(file);
       preview.src = url;
+      preview.play();
+      timelineClips = [];
     });
 
     mediaBin.appendChild(clip);
@@ -131,12 +227,38 @@
     track.addEventListener('drop', (e) => {
       e.preventDefault();
       const name = e.dataTransfer.getData('text/plain');
+      const media = mediaFiles[name];
+      if (!media) return;
+
       const clip = document.createElement('div');
       clip.className = 'timeline-clip';
       clip.textContent = name;
+      clip.style.width = `${media.duration * SCALE}px`;
+
       track.appendChild(clip);
+      timelineClips.push(media);
+      currentTimelineIndex = 0;
+      playTimelineClips();
     });
   });
+
+  function playTimelineClips() {
+    if (timelineClips.length === 0) return;
+    const currentClip = timelineClips[currentTimelineIndex];
+    if (!currentClip) return;
+    preview.src = URL.createObjectURL(currentClip.file);
+    preview.play();
+  }
+
+  preview.onended = () => {
+    if (timelineClips.length === 0) return;
+    currentTimelineIndex++;
+    if (currentTimelineIndex < timelineClips.length) {
+      playTimelineClips();
+    } else {
+      timelineClips = [];
+    }
+  };
 </script>
 
 </body>
